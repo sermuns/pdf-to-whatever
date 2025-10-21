@@ -21,8 +21,46 @@
 		U+2215, U+FEFF, U+FFFD;
 }
 
-:root {
-	background-color: hsl(0, 10%, 10%);
-	color: hsl(0, 10%, 90%);
+* {
 	font-family: "JetBrains Mono", monospace;
+}
+
+:root {
+	background-color: hsl(0, 10%, 12%);
+	color: hsl(0, 10%, 90%);
+}
+
+label {
+	display: contents;
+}
+
+#processed {
+	padding: 2rem 1rem;
+	display: grid;
+	grid-template-columns: repeat(4, auto);
+	justify-content: left;
+	gap: min(3rem, 3vw);
+}
+
+a {
+	color: hsl(0, 40%, 75%);
+	&.download {
+		cursor: pointer;
+		display: flex;
+		gap: 0.3rem;
+	}
+}
+
+body {
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	min-height: 100vh;
+	margin: 0;
+	padding: 1rem;
+}
+
+footer {
+	margin-top: auto;
+	text-align: center;
 }
