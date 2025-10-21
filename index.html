@@ -1,0 +1,38 @@
+<html lang="sv">
+	<head>
+		<link data-trunk rel="rust" />
+		<link data-trunk rel="css" href="style.css" />
+		<link data-trunk rel="copy-dir" href="static" />
+	</head>
+	<body>
+		<h1>HEllo</h1>
+		<div
+			id="dropzone"
+			style="
+				border: 2px dashed #aaa;
+				padding: 50px;
+				width: 300px;
+				text-align: center;
+			"
+		>
+			Drop file here
+		</div>
+		<pre id="out"></pre>
+		<script type="module">
+			import init, { process_file } from "./pdf-to-whatever";
+
+			const dz = document.getElementById("dropzone");
+			const out = document.getElementById("out");
+
+			await init();
+
+			dz.addEventListener("dragover", (e) => e.preventDefault());
+			dz.addEventListener("drop", async (e) => {
+				e.preventDefault();
+				const f = e.dataTransfer.files[0];
+				const b = new Uint8Array(await f.arrayBuffer());
+				out.textContent = process_file(b);
+			});
+		</script>
+	</body>
+</html>

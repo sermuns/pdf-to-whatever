@@ -1,0 +1,13 @@
+[package]
+name = "pdf-to-whatever"
+version = "0.1.0"
+edition = "2024"
+authors = ["Samuel Åkesson <sermuns@lysator.liu.se>"]
+license = "WTFPL"
+
+[dependencies]
+base64 = "0.22.1"
+gloo = "0.11.0"
+js-sys = "0.3.81"
+wasm-bindgen = "0.2.104"
+yew = "0.21.0"
