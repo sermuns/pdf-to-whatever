@@ -1,3 +1,4 @@
+use image::ImageOutputFormat;
 use once_cell::sync::Lazy;
 use pdfium_render::prelude::*;
 use std::rc::Rc;
