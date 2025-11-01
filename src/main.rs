@@ -1,3 +1,5 @@
+use wasm_bindgen::prelude::*;
+use gloo::utils::document;
 use image::ImageFormat;
 use once_cell::sync::Lazy;
 use pdfium_render::prelude::*;
@@ -180,6 +182,16 @@ impl App {
         }
     }
 }
-fn main() {
-    yew::Renderer::<App>::new().render();
+
+#[wasm_bindgen]
+pub fn begin_rendering() {
+    console_error_panic_hook::set_once();
+
+    let main_element = document()
+        .query_selector("main")
+        .unwrap()
+        .expect("main element must exist!");
+    yew::Renderer::<App>::with_root(main_element).render();
 }
+
+fn main() {}
