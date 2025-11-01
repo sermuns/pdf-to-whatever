@@ -5,30 +5,33 @@
 		<link data-trunk rel="copy-dir" href="static" data-target-path="." />
 		<link data-trunk rel="css" href="style.css" />
 		<script src="pdfium.js"></script>
-		<link data-trunk rel="rust" />
+		<link data-trunk rel="rust" data-bindgen-target="web" />
 	</head>
 
 	<body>
 		<main></main>
+		<footer>
+			Created by
+			<a href="https://samake.se" target="_blank"> Samuel "sermuns" Åkesson </a>
+		</footer>
 	</body>
 
 	<script type="module">
-		let trunkStarted = false;
 		addEventListener("TrunkApplicationStarted", () => {
-			trunkStarted = true;
-		});
-		PDFiumModule().then(async (pdfiumModule) => {
-			const { initialize_pdfium_render, begin_rendering } = window.wasmBindings;
-			console.assert(
-				initialize_pdfium_render(
-					pdfiumModule, // Emscripten-wrapped Pdfium WASM module
-					event.detail.wasm,
-					true, // Debugging flag; set this to true to get tracing information logged to the Javascript console
-				),
-				"Initialization of pdfium-render failed!",
-			);
-			console.log("pdfium-render initialized successfully!");
-			begin_rendering();
+			PDFiumModule().then(async (pdfiumModule) => {
+				const { initialize_pdfium_render, begin_rendering } =
+					window.wasmBindings;
+				console.assert(
+					initialize_pdfium_render(
+						pdfiumModule, // Emscripten-wrapped Pdfium WASM module
+						window.wasmBindings,
+						false, // Debugging flag; set this to true to get tracing information logged to the Javascript console
+					),
+					"Initialization of pdfium-render failed!",
+				);
+				console.log("Initialization of pdfium-render succeeded.");
+				begin_rendering();
+			});
 		});
 	</script>
 </html>
