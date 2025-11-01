@@ -1,10 +1,12 @@
-use image::ImageOutputFormat;
+use image::ImageFormat;
 use once_cell::sync::Lazy;
 use pdfium_render::prelude::*;
+use std::io::Cursor;
 use std::rc::Rc;
 
 use std::collections::HashMap;
 
+use gloo::console::log;
 use gloo::file::callbacks::FileReader;
 use humansize::format_size;
 use web_sys::{DragEvent, Event, HtmlInputElement};
@@ -13,9 +15,9 @@ use yew::{Callback, Component, Context, Html, html};
 
 pub struct RenderedImage {
     name: String,
-    human_size: String,
+    original_human_size: String,
     png_data: Vec<u8>,
-    jpg_data: Vec<u8>,
+    jpeg_data: Vec<u8>,
 }
 
 pub enum Msg {
@@ -63,7 +65,7 @@ impl Component for App {
                     if file_type != "application/pdf" {
                         continue;
                     }
-                    let human_size = format_size(file.size(), humansize::BINARY);
+                    let original_human_size = format_size(file.size(), humansize::BINARY);
 
                     let pdfium = self.pdfium.clone();
                     let task = {
@@ -78,12 +80,23 @@ impl Component for App {
                                 first_page.render_with_config(&RENDER_CONFIG).unwrap();
 
                             let rendered_image = rendered_first_page.as_image();
-                            let mut png_buf = Vec::new();
+
+                            let mut png_buf = Cursor::new(Vec::new());
                             rendered_image
-                                .write_to(&mut png_buf, ImageOutputFormat::Png)
+                                .write_to(&mut png_buf, ImageFormat::Png)
                                 .unwrap();
 
-                            link.send_message(Msg::Loaded(RenderedImage { name, human_size }))
+                            let mut jpeg_buf = Cursor::new(Vec::new());
+                            rendered_image
+                                .write_to(&mut jpeg_buf, ImageFormat::Jpeg)
+                                .unwrap();
+
+                            link.send_message(Msg::Loaded(RenderedImage {
+                                name,
+                                original_human_size,
+                                png_data: png_buf.into_inner(),
+                                jpeg_data: jpeg_buf.into_inner(),
+                            }))
                         })
                     };
                     self.readers.insert(file.name(), task);
@@ -154,7 +167,7 @@ impl App {
         html! {
             <>
                 <div>{ &file.name }</div>
-                <div>{ &file.human_size }</div>
+                <div>{ &file.original_human_size }</div>
                 <a class="download">
                     <img src="static/download-1-svgrepo-com.svg" width="10" height="15" />
                     {"PNG"}
