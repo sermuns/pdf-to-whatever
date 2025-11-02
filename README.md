@@ -1,5 +1,7 @@
 # pdf-to-whatever
 
+export pages of a pdf to images, all using WASM in browser, no server.
+
 ## developing locally
 
 1. install _trunk-rs_.

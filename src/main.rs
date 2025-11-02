@@ -6,6 +6,7 @@ use pdfium_render::prelude::*;
 use std::io::Cursor;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
+use web_time::Instant;
 
 use std::collections::HashMap;
 
@@ -39,7 +40,6 @@ pub struct App {
 static RENDER_CONFIG: Lazy<PdfRenderConfig> = Lazy::new(|| {
     PdfRenderConfig::new()
         .set_target_width(2000)
-        .set_maximum_height(2000)
         .rotate_if_landscape(PdfPageRenderRotation::Degrees90, true)
 });
 
@@ -63,56 +63,62 @@ impl Component for App {
                 true
             }
             Msg::Upload(files) => {
-                for file in gloo::file::FileList::from(files.expect("files")).iter() {
+                for file in gloo::file::FileList::from(files.expect("no files uploaded??")).iter() {
                     let link = ctx.link().clone();
                     let file_type = file.raw_mime_type();
                     if file_type != "application/pdf" {
                         continue;
                     }
                     let stem = file.name().trim_end_matches(".pdf").to_string();
-                    let original_human_size = format_size(file.size(), humansize::BINARY);
+                    let document_human_size = format_size(file.size(), humansize::BINARY);
 
                     let pdfium = self.pdfium.clone();
-                    let task = {
+                    log!("creating task", &file.name());
+                    self.readers.insert(
+                        stem.clone(),
                         gloo::file::callbacks::read_as_bytes(file, move |res| {
                             let data = res.expect("failed to read file");
-                            log!("got data", &stem);
-                            let document = pdfium.load_pdf_from_byte_vec(data, None).unwrap();
-                            log!("loaded document", &stem);
+
+                            let document = pdfium
+                                .load_pdf_from_byte_vec(data, None)
+                                .expect("failed to load document");
+
                             let first_page = document
                                 .pages()
                                 .first()
                                 .expect("document does not have first page.");
-                            log!("got first page", &stem);
+
                             let rendered_first_page =
                                 first_page.render_with_config(&RENDER_CONFIG).unwrap();
-                            log!("rendered first pae", &stem);
 
-                            let rendered_image = rendered_first_page.as_image();
-                            log!("render first page as imag", &stem);
+                            let image = rendered_first_page.as_image();
 
-                            let mut png_buf = Cursor::new(Vec::new());
-                            rendered_image
-                                .write_to(&mut png_buf, ImageFormat::Png)
-                                .unwrap();
-                            log!("render first page as png", &stem);
+                            // unnecessary micro-optimizations? Do we reall yneed to pre-allocate?
+                            let mut png_buf = Cursor::new(Vec::with_capacity(
+                                PdfBitmap::bytes_required_for_size(
+                                    image.width().try_into().unwrap(),
+                                    image.height().try_into().unwrap(),
+                                ),
+                            ));
+                            let mut jpeg_buf = png_buf.clone();
 
-                            let mut jpeg_buf = Cursor::new(Vec::new());
-                            rendered_image
-                                .write_to(&mut jpeg_buf, ImageFormat::Jpeg)
-                                .unwrap();
+                            let mut now = Instant::now();
+                            image.write_to(&mut png_buf, ImageFormat::Png).unwrap();
+                            log!("render png", &stem, now.elapsed().as_secs_f32(), "s");
 
-                            log!("done rendering", &stem);
+                            now = Instant::now();
+                            image.write_to(&mut jpeg_buf, ImageFormat::Jpeg).unwrap();
+
+                            log!("render jpeg", &stem, now.elapsed().as_secs_f32(), "s");
+
                             link.send_message(Msg::Render(RenderedImage {
                                 stem,
-                                original_human_size,
+                                original_human_size: document_human_size,
                                 png_data: png_buf.into_inner(),
                                 jpeg_data: jpeg_buf.into_inner(),
                             }))
-                        })
-                    };
-                    log!("creating task", &file.name());
-                    self.readers.insert(file.name(), task);
+                        }),
+                    );
                 }
                 true
             }
@@ -157,6 +163,7 @@ impl Component for App {
 impl App {
     fn view_file(file: &RenderedImage) -> Html {
         log!("viewing", &file.stem);
+
         let png_blob = Blob::new::<&[u8]>(&file.png_data);
         let png_url = Url::create_object_url_with_blob(&png_blob.into())
             .expect("failed creating url for png");
@@ -173,7 +180,7 @@ impl App {
                 </a>
                 <a class="download" href={jpeg_url} target="_blank" download={file.stem.clone() + ".jpeg"}>
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
-                    {"JPG"}
+                    {"JPEG"}
                 </a>
             </>
         }
