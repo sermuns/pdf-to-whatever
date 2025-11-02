@@ -9,10 +9,12 @@ use wasm_bindgen::prelude::*;
 
 use std::collections::HashMap;
 
+const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
+
 use gloo::console::log;
 use gloo::file::callbacks::FileReader;
 use humansize::format_size;
-use web_sys::{DragEvent, Event, HtmlInputElement, Url, WorkerGlobalScope};
+use web_sys::{DragEvent, Event, HtmlInputElement, Url};
 use yew::html::TargetCast;
 use yew::{Callback, Component, Context, Html, html};
 
@@ -24,8 +26,8 @@ pub struct RenderedImage {
 }
 
 pub enum Msg {
-    Loaded(RenderedImage),
-    Files(Option<web_sys::FileList>),
+    Render(RenderedImage),
+    Upload(Option<web_sys::FileList>),
 }
 
 pub struct App {
@@ -55,12 +57,12 @@ impl Component for App {
 
     fn update(&mut self, ctx: &Context<Self>, msg: Self::Message) -> bool {
         match msg {
-            Msg::Loaded(file) => {
+            Msg::Render(file) => {
                 self.readers.remove(&file.stem);
                 self.files.push(file);
                 true
             }
-            Msg::Files(files) => {
+            Msg::Upload(files) => {
                 for file in gloo::file::FileList::from(files.expect("files")).iter() {
                     let link = ctx.link().clone();
                     let file_type = file.raw_mime_type();
@@ -74,27 +76,34 @@ impl Component for App {
                     let task = {
                         gloo::file::callbacks::read_as_bytes(file, move |res| {
                             let data = res.expect("failed to read file");
+                            log!("got data", &stem);
                             let document = pdfium.load_pdf_from_byte_vec(data, None).unwrap();
+                            log!("loaded document", &stem);
                             let first_page = document
                                 .pages()
                                 .first()
                                 .expect("document does not have first page.");
+                            log!("got first page", &stem);
                             let rendered_first_page =
                                 first_page.render_with_config(&RENDER_CONFIG).unwrap();
+                            log!("rendered first pae", &stem);
 
                             let rendered_image = rendered_first_page.as_image();
+                            log!("render first page as imag", &stem);
 
                             let mut png_buf = Cursor::new(Vec::new());
                             rendered_image
                                 .write_to(&mut png_buf, ImageFormat::Png)
                                 .unwrap();
+                            log!("render first page as png", &stem);
 
                             let mut jpeg_buf = Cursor::new(Vec::new());
                             rendered_image
                                 .write_to(&mut jpeg_buf, ImageFormat::Jpeg)
                                 .unwrap();
 
-                            link.send_message(Msg::Loaded(RenderedImage {
+                            log!("done rendering", &stem);
+                            link.send_message(Msg::Render(RenderedImage {
                                 stem,
                                 original_human_size,
                                 png_data: png_buf.into_inner(),
@@ -102,6 +111,7 @@ impl Component for App {
                             }))
                         })
                     };
+                    log!("creating task", &file.name());
                     self.readers.insert(file.name(), task);
                 }
                 true
@@ -110,46 +120,33 @@ impl Component for App {
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
-        let noop_drag = Callback::from(|e: DragEvent| {
-            e.prevent_default();
-        });
-
         html! {
-        <main>
-            <h1>{ "pdf-to-whatever" }</h1>
+        <main
+            ondrop={ctx.link().callback(|e: DragEvent| {
+                e.prevent_default();
+                Msg::Upload(e.data_transfer().unwrap().files())
+            })}
+            ondragover={Callback::from(|e: DragEvent| {
+                e.prevent_default();
+            })}
+            ondragenter={Callback::from(|e: DragEvent| {
+                e.prevent_default();
+            })}
+        >
+            <h1>{CRATE_NAME}</h1>
             <label>
-                <div
-                    id="drop-container"
-                    ondrop={ctx.link().callback(|event: DragEvent| {
-                        event.prevent_default();
-                        Msg::Files(event.data_transfer().unwrap().files())
-                    })}
-                    ondragover={&noop_drag}
-                    ondragenter={&noop_drag}
-                >
-                    <p>{"Drop your documents here or click to select"}</p>
-                </div>
+                <p>{"Drop your documents here or click to select"}</p>
                 <input
                     type="file"
                     accept="application/pdf"
                     multiple={true}
                     onchange={ctx.link().callback(move |e: Event| {
                         let input: HtmlInputElement = e.target_unchecked_into();
-                        Msg::Files(input.files())
+                        Msg::Upload(input.files())
                     })}
                 />
             </label>
             <div id="processed">
-                <div>{ "2025-10-17 närvarolista_2025-10-15.pdf"}</div>
-                <div>{"2.05 MiB"}</div>
-                <a class="download">
-                    <img src="download-1-svgrepo-com.svg" width="10" height="15" />
-                    {"PNG"}
-                </a>
-                <a class="download">
-                    <img src="download-1-svgrepo-com.svg" width="10" height="15" />
-                    {"JPG"}
-                </a>
                 { for self.files.iter().map(Self::view_file) }
             </div>
         </main>
@@ -159,8 +156,12 @@ impl Component for App {
 
 impl App {
     fn view_file(file: &RenderedImage) -> Html {
+        log!("viewing", &file.stem);
         let png_blob = Blob::new::<&[u8]>(&file.png_data);
         let png_url = Url::create_object_url_with_blob(&png_blob.into())
+            .expect("failed creating url for png");
+        let jpeg_blob = Blob::new::<&[u8]>(&file.jpeg_data);
+        let jpeg_url = Url::create_object_url_with_blob(&jpeg_blob.into())
             .expect("failed creating url for png");
         html! {
             <>
@@ -170,7 +171,7 @@ impl App {
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"PNG"}
                 </a>
-                <a class="download">
+                <a class="download" href={jpeg_url} target="_blank" download={file.stem.clone() + ".jpeg"}>
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"JPG"}
                 </a>

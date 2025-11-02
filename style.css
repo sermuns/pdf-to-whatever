@@ -21,17 +21,24 @@
 		U+2215, U+FEFF, U+FFFD;
 }
 
-* {
-	font-family: "JetBrains Mono", monospace;
-}
-
 :root {
+	--accent-color: hsl(0, 40%, 75%);
+
 	background-color: hsl(0, 10%, 12%);
 	color: hsl(0, 10%, 90%);
+	font-family: "JetBrains Mono", monospace;
 }
 
 label {
 	display: contents;
+}
+
+input {
+	border: 0.1rem var(--accent-color) solid;
+	border-radius: 0.5rem;
+	padding: 0.5rem;
+	font-size: inherit;
+	font-family: inherit;
 }
 
 #processed {
@@ -43,11 +50,18 @@ label {
 }
 
 a {
-	color: hsl(0, 40%, 75%);
+	color: var(--accent-color);
 	&.download {
 		cursor: pointer;
 		display: flex;
 		gap: 0.3rem;
+	}
+}
+
+main {
+	flex: 1;
+	.hovered {
+		outline: 1rem black solid;
 	}
 }
 
@@ -58,9 +72,9 @@ body {
 	min-height: 100vh;
 	margin: 0;
 	padding: 1rem;
+	gap: 1rem;
 }
 
 footer {
-	margin-top: auto;
 	text-align: center;
 }
