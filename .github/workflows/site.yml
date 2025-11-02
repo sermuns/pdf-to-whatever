@@ -16,6 +16,8 @@ jobs:
 
       - run: rustup toolchain install stable --profile minimal
 
+      - run: rustup target add wasm32-unknown-unknown
+
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk
