@@ -2,6 +2,10 @@
 
 export pages of a pdf to images, all using WASM in browser, no server.
 
+## TODO
+
+rewrite it all. Use https://github.com/LaurenzV/hayro
+
 ## developing locally
 
 1. install _trunk-rs_.
