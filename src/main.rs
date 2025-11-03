@@ -1,23 +1,23 @@
-use gloo::file::Blob;
-use gloo::utils::document;
-use image::ImageFormat;
-use once_cell::sync::Lazy;
-use pdfium_render::prelude::*;
-use std::io::Cursor;
-use std::rc::Rc;
-use wasm_bindgen::prelude::*;
-use web_time::Instant;
-
-use std::collections::HashMap;
-
-const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
-
 use gloo::console::log;
 use gloo::file::callbacks::FileReader;
+use gloo::file::{Blob, FileList};
+use hayro::{Pdf, RenderSettings, render};
+use hayro_interpret::InterpreterSettings;
 use humansize::format_size;
+use image::ImageFormat;
+use image::ImageReader;
+use once_cell::sync::Lazy;
+use std::collections::HashMap;
+use std::io::Cursor;
+use std::sync::Arc;
 use web_sys::{DragEvent, Event, HtmlInputElement, Url};
+use web_time::Instant;
 use yew::html::TargetCast;
 use yew::{Callback, Component, Context, Html, html};
+
+const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
+static INTERPRETER_SETTINGS: Lazy<InterpreterSettings> = Lazy::new(InterpreterSettings::default);
+static RENDER_SETTINGS: Lazy<RenderSettings> = Lazy::new(RenderSettings::default);
 
 pub struct RenderedImage {
     stem: String,
@@ -34,14 +34,7 @@ pub enum Msg {
 pub struct App {
     readers: HashMap<String, FileReader>,
     files: Vec<RenderedImage>,
-    pdfium: Rc<Pdfium>,
 }
-
-static RENDER_CONFIG: Lazy<PdfRenderConfig> = Lazy::new(|| {
-    PdfRenderConfig::new()
-        .set_target_width(2000)
-        .rotate_if_landscape(PdfPageRenderRotation::Degrees90, true)
-});
 
 impl Component for App {
     type Message = Msg;
@@ -51,7 +44,6 @@ impl Component for App {
         Self {
             readers: HashMap::default(),
             files: Vec::default(),
-            pdfium: Rc::new(Pdfium::default()),
         }
     }
 
@@ -63,7 +55,7 @@ impl Component for App {
                 true
             }
             Msg::Upload(files) => {
-                for file in gloo::file::FileList::from(files.expect("no files uploaded??")).iter() {
+                for file in FileList::from(files.expect("no files uploaded??")).iter() {
                     let link = ctx.link().clone();
                     let file_type = file.raw_mime_type();
                     if file_type != "application/pdf" {
@@ -72,50 +64,44 @@ impl Component for App {
                     let stem = file.name().trim_end_matches(".pdf").to_string();
                     let document_human_size = format_size(file.size(), humansize::BINARY);
 
-                    let pdfium = self.pdfium.clone();
                     log!("creating task", &file.name());
                     self.readers.insert(
                         stem.clone(),
                         gloo::file::callbacks::read_as_bytes(file, move |res| {
                             let data = res.expect("failed to read file");
 
-                            let document = pdfium
-                                .load_pdf_from_byte_vec(data, None)
-                                .expect("failed to load document");
+                            let pdf = Pdf::new(Arc::new(data)).expect("failed reading document");
 
-                            let first_page = document
-                                .pages()
-                                .first()
-                                .expect("document does not have first page.");
-
-                            let rendered_first_page =
-                                first_page.render_with_config(&RENDER_CONFIG).unwrap();
-
-                            let image = rendered_first_page.as_image();
-
-                            // unnecessary micro-optimizations? Do we reall yneed to pre-allocate?
-                            let mut png_buf = Cursor::new(Vec::with_capacity(
-                                PdfBitmap::bytes_required_for_size(
-                                    image.width().try_into().unwrap(),
-                                    image.height().try_into().unwrap(),
-                                ),
-                            ));
-                            let mut jpeg_buf = png_buf.clone();
+                            let first_page_pixmap = render(
+                                pdf.pages().first().expect("has no pages"),
+                                &INTERPRETER_SETTINGS,
+                                &RENDER_SETTINGS,
+                            );
 
                             let mut now = Instant::now();
-                            image.write_to(&mut png_buf, ImageFormat::Png).unwrap();
+                            let png_data = first_page_pixmap.take_png();
                             log!("render png", &stem, now.elapsed().as_secs_f32(), "s");
 
                             now = Instant::now();
-                            image.write_to(&mut jpeg_buf, ImageFormat::Jpeg).unwrap();
+                            let rgba_reader =
+                                ImageReader::with_format(Cursor::new(&png_data), ImageFormat::Png)
+                                    .decode()
+                                    .unwrap();
+                            let mut jpeg_data: Vec<u8> = Vec::new();
+                            rgba_reader
+                                .write_to(
+                                    &mut Cursor::new(&mut jpeg_data),
+                                    image::ImageFormat::Jpeg,
+                                )
+                                .unwrap();
 
                             log!("render jpeg", &stem, now.elapsed().as_secs_f32(), "s");
 
                             link.send_message(Msg::Render(RenderedImage {
                                 stem,
                                 original_human_size: document_human_size,
-                                png_data: png_buf.into_inner(),
-                                jpeg_data: jpeg_buf.into_inner(),
+                                png_data,
+                                jpeg_data,
                             }))
                         }),
                     );
@@ -127,7 +113,7 @@ impl Component for App {
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-        <main
+        <body
             ondrop={ctx.link().callback(|e: DragEvent| {
                 e.prevent_default();
                 Msg::Upload(e.data_transfer().unwrap().files())
@@ -139,6 +125,7 @@ impl Component for App {
                 e.prevent_default();
             })}
         >
+        <main>
             <h1>{CRATE_NAME}</h1>
             <label>
                 <p>{"Drop your documents here or click to select"}</p>
@@ -156,6 +143,13 @@ impl Component for App {
                 { for self.files.iter().map(Self::view_file) }
             </div>
         </main>
+        <footer>
+            {"Created by "}
+            <a href="https://samake.se" target="_blank">
+                {"Samuel \"sermuns\" Åkesson"}
+            </a>
+        </footer>
+        </body>
         }
     }
 }
@@ -187,15 +181,8 @@ impl App {
     }
 }
 
-#[wasm_bindgen]
-pub fn begin_rendering() {
+fn main() {
     console_error_panic_hook::set_once();
 
-    let main_element = document()
-        .query_selector("main")
-        .unwrap()
-        .expect("main element must exist!");
-    yew::Renderer::<App>::with_root(main_element).render();
+    yew::Renderer::<App>::new().render();
 }
-
-fn main() {}
