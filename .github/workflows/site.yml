@@ -11,17 +11,17 @@ jobs:
       id-token: write # to use actions/deploy-pages
       pages: write # to push to a github pages site
     steps:
-
       - uses: actions/checkout@v4
 
-      - run: rustup toolchain install stable --profile minimal
-
-      - run: rustup target add wasm32-unknown-unknown
+      - uses: dtolnay/rust-toolchain
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
 
       - uses: taiki-e/install-action@v2
         with:
           tool: trunk
-        
+
       - uses: Swatinem/rust-cache@v2
 
       - run: trunk build
