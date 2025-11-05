@@ -8,21 +8,25 @@ use image::ImageFormat;
 use image::ImageReader;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::sync::Arc;
 use web_sys::{DragEvent, Event, HtmlElement, HtmlInputElement, HtmlScriptElement, Url};
 use web_time::Instant;
 use yew::html::TargetCast;
 use yew::{Callback, Component, Context, Html, html};
+use zip::ZipWriter;
+use zip::write::{ExtendedFileOptions, FileOptions, SimpleFileOptions};
 
 const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
 static INTERPRETER_SETTINGS: Lazy<InterpreterSettings> = Lazy::new(InterpreterSettings::default);
 static RENDER_SETTINGS: Lazy<RenderSettings> = Lazy::new(RenderSettings::default);
+static ZIP_FILE_OPTIONS: Lazy<SimpleFileOptions> =
+    Lazy::new(|| SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored));
 
 pub struct RenderedImage {
     stem: String,
     pdf_human_size: String,
-    png_data: Vec<u8>,
+    png_zip: Vec<u8>,
     jpeg_data: Vec<u8>,
 }
 
@@ -73,36 +77,69 @@ impl Component for App {
 
                             let pdf = Pdf::new(Arc::new(data)).expect("failed reading document");
 
-                            let first_page_pixmap = render(
-                                pdf.pages().first().expect("has no pages"),
-                                &INTERPRETER_SETTINGS,
-                                &RENDER_SETTINGS,
-                            );
-
                             let mut now = Instant::now();
-                            let png_data = first_page_pixmap.take_png();
-                            log!("render png", &stem, now.elapsed().as_secs_f32(), "s");
+                            let mut png_zip_writer = ZipWriter::new(Cursor::new(Vec::new()));
+                            let mut jpeg_zip_writer = ZipWriter::new(Cursor::new(Vec::new()));
+                            for (page_num, page) in pdf.pages().iter().enumerate() {
+                                let page_num = page_num + 1; // 1-indexed!
+                                let page_pixmap =
+                                    render(page, &INTERPRETER_SETTINGS, &RENDER_SETTINGS);
 
-                            now = Instant::now();
-                            let mut jpeg_data: Vec<u8> = Vec::new();
-                            let rgba_reader =
-                                ImageReader::with_format(Cursor::new(&png_data), ImageFormat::Png)
-                                    .decode()
+                                let png_bytes = page_pixmap.take_png();
+                                let png_filename =
+                                    format!("{}-page-{:0>3}.png", stem.clone(), page_num);
+                                png_zip_writer
+                                    .start_file(png_filename, *ZIP_FILE_OPTIONS)
+                                    .map_err(|e| panic!("{:?}", e))
                                     .unwrap();
-                            rgba_reader
-                                .write_to(
-                                    &mut Cursor::new(&mut jpeg_data),
-                                    image::ImageFormat::Jpeg,
-                                )
-                                .unwrap();
+                                png_zip_writer.write_all(&png_bytes).unwrap_or_else(|_| {
+                                    panic!("failed to write png in zip {}", &stem)
+                                });
 
-                            log!("render jpeg", &stem, now.elapsed().as_secs_f32(), "s");
+                                let mut jpeg_bytes: Vec<u8> = Vec::new();
+                                let rgba_reader = ImageReader::with_format(
+                                    Cursor::new(&jpeg_bytes),
+                                    ImageFormat::Png,
+                                )
+                                .decode()
+                                .unwrap();
+                                rgba_reader
+                                    .write_to(
+                                        &mut Cursor::new(&mut jpeg_bytes),
+                                        image::ImageFormat::Jpeg,
+                                    )
+                                    .map_err(|e| panic!("fuck"))
+                                    .unwrap();
+                                let jpeg_filename =
+                                    format!("{}-page-{:0>3}.jpeg", stem.clone(), page_num);
+                                jpeg_zip_writer
+                                    .start_file(jpeg_filename, *ZIP_FILE_OPTIONS)
+                                    .map_err(|e| panic!("FUCK: {:?}", e))
+                                    .unwrap();
+                                jpeg_zip_writer.write_all(&jpeg_bytes).unwrap_or_else(|_| {
+                                    panic!("failed to write jpeg in zip {}", &stem)
+                                });
+
+                                log!("processed page", page_num, &stem);
+                            }
+                            log!(
+                                "processed all pages",
+                                &stem,
+                                now.elapsed().as_secs_f32(),
+                                "s"
+                            );
 
                             link.send_message(Msg::Render(RenderedImage {
                                 stem,
                                 pdf_human_size,
-                                png_data,
-                                jpeg_data,
+                                png_zip: png_zip_writer
+                                    .finish()
+                                    .expect("failed finishing png zip")
+                                    .into_inner(),
+                                jpeg_data: jpeg_zip_writer
+                                    .finish()
+                                    .expect("failed finishing jpeg zip")
+                                    .into_inner(),
                             }))
                         }),
                     );
@@ -165,10 +202,8 @@ impl Component for App {
 
 impl App {
     fn view_file(file: &RenderedImage) -> Html {
-        log!("viewing", &file.stem);
-
-        let png_blob = Blob::new::<&[u8]>(&file.png_data);
-        let png_url = Url::create_object_url_with_blob(&png_blob.into())
+        let png_zip_blob = Blob::new::<&[u8]>(&file.png_zip);
+        let png_zip_url = Url::create_object_url_with_blob(&png_zip_blob.into())
             .expect("failed creating url for png");
         let jpeg_blob = Blob::new::<&[u8]>(&file.jpeg_data);
         let jpeg_url = Url::create_object_url_with_blob(&jpeg_blob.into())
@@ -177,7 +212,7 @@ impl App {
             <>
                 <div>{ &file.stem }</div>
                 <div>{ &file.pdf_human_size }</div>
-                <a class="download" href={png_url} target="_blank" download={file.stem.clone() + ".png"}>
+                <a class="download" href={png_zip_url} target="_blank" download={file.stem.clone() + ".zip"}>
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"PNG"}
                 </a>
