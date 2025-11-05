@@ -1,4 +1,4 @@
-use gloo::console::log;
+use gloo::console::{error, log};
 use gloo::file::callbacks::FileReader;
 use gloo::file::{Blob, FileList};
 use hayro::{Pdf, RenderSettings, render};
@@ -10,7 +10,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::sync::Arc;
-use web_sys::{DragEvent, Event, HtmlInputElement, Url};
+use web_sys::{DragEvent, Event, HtmlElement, HtmlInputElement, HtmlScriptElement, Url};
 use web_time::Instant;
 use yew::html::TargetCast;
 use yew::{Callback, Component, Context, Html, html};
@@ -21,14 +21,14 @@ static RENDER_SETTINGS: Lazy<RenderSettings> = Lazy::new(RenderSettings::default
 
 pub struct RenderedImage {
     stem: String,
-    original_human_size: String,
+    pdf_human_size: String,
     png_data: Vec<u8>,
     jpeg_data: Vec<u8>,
 }
 
 pub enum Msg {
     Render(RenderedImage),
-    Upload(Option<web_sys::FileList>),
+    Upload(web_sys::FileList),
 }
 
 pub struct App {
@@ -55,16 +55,17 @@ impl Component for App {
                 true
             }
             Msg::Upload(files) => {
-                for file in FileList::from(files.expect("no files uploaded??")).iter() {
-                    let link = ctx.link().clone();
-                    let file_type = file.raw_mime_type();
-                    if file_type != "application/pdf" {
+                for file in FileList::from(files).iter() {
+                    let mime_type = file.raw_mime_type();
+                    if mime_type != "application/pdf" {
+                        error!("tried to upload file with mime type", mime_type);
                         continue;
                     }
                     let stem = file.name().trim_end_matches(".pdf").to_string();
-                    let document_human_size = format_size(file.size(), humansize::BINARY);
+                    let pdf_human_size = format_size(file.size(), humansize::BINARY);
 
                     log!("creating task", &file.name());
+                    let link = ctx.link().clone();
                     self.readers.insert(
                         stem.clone(),
                         gloo::file::callbacks::read_as_bytes(file, move |res| {
@@ -83,11 +84,11 @@ impl Component for App {
                             log!("render png", &stem, now.elapsed().as_secs_f32(), "s");
 
                             now = Instant::now();
+                            let mut jpeg_data: Vec<u8> = Vec::new();
                             let rgba_reader =
                                 ImageReader::with_format(Cursor::new(&png_data), ImageFormat::Png)
                                     .decode()
                                     .unwrap();
-                            let mut jpeg_data: Vec<u8> = Vec::new();
                             rgba_reader
                                 .write_to(
                                     &mut Cursor::new(&mut jpeg_data),
@@ -99,46 +100,54 @@ impl Component for App {
 
                             link.send_message(Msg::Render(RenderedImage {
                                 stem,
-                                original_human_size: document_human_size,
+                                pdf_human_size,
                                 png_data,
                                 jpeg_data,
                             }))
                         }),
                     );
                 }
-                true
+                false
             }
         }
     }
 
     fn view(&self, ctx: &Context<Self>) -> Html {
         html! {
-        <body
-            ondrop={ctx.link().callback(|e: DragEvent| {
-                e.prevent_default();
-                Msg::Upload(e.data_transfer().unwrap().files())
-            })}
-            ondragover={Callback::from(|e: DragEvent| {
-                e.prevent_default();
-            })}
-            ondragenter={Callback::from(|e: DragEvent| {
-                e.prevent_default();
-            })}
-        >
+        <>
         <main>
             <h1>{CRATE_NAME}</h1>
-            <label>
+            <div
+                id="file-pick"
+                ondrop={ctx.link().callback(|e: DragEvent| {
+                    e.prevent_default();
+                    Msg::Upload(e.data_transfer().unwrap().files().expect("must be some files"))
+                })}
+                ondragenter={Callback::from(|e: DragEvent| {
+                    e.prevent_default();
+                    let element: HtmlElement = e.target_unchecked_into();
+                    element.set_class_name("hovered");
+                })}
+                ondragover={Callback::from(|e: DragEvent| {
+                    e.prevent_default();
+                })}
+                ondragleave={Callback::from(|e: DragEvent| {
+                    e.prevent_default();
+                    let element: HtmlElement = e.target_unchecked_into();
+                    let _ = element.remove_attribute("class");
+                })}
+            >
                 <p>{"Drop your documents here or click to select"}</p>
                 <input
                     type="file"
                     accept="application/pdf"
-                    multiple={true}
-                    onchange={ctx.link().callback(move |e: Event| {
+                    multiple=true
+                    onchange={ctx.link().callback(|e: Event| {
                         let input: HtmlInputElement = e.target_unchecked_into();
-                        Msg::Upload(input.files())
+                        Msg::Upload(input.files().expect("must be some files"))
                     })}
                 />
-            </label>
+            </div>
             <div id="processed">
                 { for self.files.iter().map(Self::view_file) }
             </div>
@@ -149,7 +158,7 @@ impl Component for App {
                 {"Samuel \"sermuns\" Åkesson"}
             </a>
         </footer>
-        </body>
+        </>
         }
     }
 }
@@ -167,7 +176,7 @@ impl App {
         html! {
             <>
                 <div>{ &file.stem }</div>
-                <div>{ &file.original_human_size }</div>
+                <div>{ &file.pdf_human_size }</div>
                 <a class="download" href={png_url} target="_blank" download={file.stem.clone() + ".png"}>
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"PNG"}

@@ -23,22 +23,33 @@
 
 :root {
 	--accent-color: hsl(0, 40%, 75%);
+	--background-color: hsl(0, 10%, 12%);
+	--foreground-color: hsl(0, 10%, 90%);
 
-	background-color: hsl(0, 10%, 12%);
-	color: hsl(0, 10%, 90%);
+	background-color: var(--background-color);
+	color: var(--foreground-color);
+
 	font-family: "JetBrains Mono", monospace;
 }
 
-label {
-	display: contents;
-}
-
-input {
+#file-pick {
 	border: 0.1rem var(--accent-color) solid;
 	border-radius: 0.5rem;
 	padding: 0.5rem;
-	font-size: inherit;
-	font-family: inherit;
+
+	&.hovered {
+		background-color: var(--accent-color);
+		color: var(--background-color);
+	}
+
+	input {
+		font-size: inherit;
+		font-family: inherit;
+	}
+
+	label {
+		display: contents;
+	}
 }
 
 #processed {
@@ -60,9 +71,6 @@ a {
 
 main {
 	flex: 1;
-	.hovered {
-		outline: 1rem black solid;
-	}
 }
 
 body {
