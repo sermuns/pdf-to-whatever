@@ -23,7 +23,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - run: trunk build
+      - run: trunk build --release --minify
 
       - uses: actions/upload-pages-artifact@v3
         with:
