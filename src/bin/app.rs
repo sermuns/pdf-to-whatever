@@ -17,7 +17,7 @@ use yew::{Callback, Component, Context, Html, html};
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
-const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
+const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 const CARGO_PKG_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
 
 static INTERPRETER_SETTINGS: Lazy<InterpreterSettings> = Lazy::new(InterpreterSettings::default);
@@ -155,7 +155,7 @@ impl Component for App {
         html! {
         <>
         <main>
-            <h1>{CRATE_NAME}</h1>
+            <h1>{CARGO_PKG_NAME}</h1>
             <p>{CARGO_PKG_DESCRIPTION}</p>
             <div
                 id="file-pick"
