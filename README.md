@@ -4,7 +4,8 @@ export pages of a pdf to images, all using WASM in browser, no server.
 
 ## TODO
 
-rewrite it all. Use https://github.com/LaurenzV/hayro
+- use suspense or somehting to show loading animation (https://yew.rs/docs/concepts/suspense)
+- use web workers to processs in background. maybe multithreading?
 
 ## developing locally
 
