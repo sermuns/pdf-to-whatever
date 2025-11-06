@@ -18,6 +18,8 @@ use zip::ZipWriter;
 use zip::write::{ExtendedFileOptions, FileOptions, SimpleFileOptions};
 
 const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
+const CARGO_PKG_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
+
 static INTERPRETER_SETTINGS: Lazy<InterpreterSettings> = Lazy::new(InterpreterSettings::default);
 static RENDER_SETTINGS: Lazy<RenderSettings> = Lazy::new(RenderSettings::default);
 static ZIP_FILE_OPTIONS: Lazy<SimpleFileOptions> =
@@ -27,7 +29,7 @@ pub struct RenderedImage {
     stem: String,
     pdf_human_size: String,
     png_zip: Vec<u8>,
-    jpeg_data: Vec<u8>,
+    jpeg_zip: Vec<u8>,
 }
 
 pub enum Msg {
@@ -96,13 +98,13 @@ impl Component for App {
                                     panic!("failed to write png in zip {}", &stem)
                                 });
 
-                                let mut jpeg_bytes: Vec<u8> = Vec::new();
                                 let rgba_reader = ImageReader::with_format(
-                                    Cursor::new(&jpeg_bytes),
+                                    Cursor::new(&png_bytes),
                                     ImageFormat::Png,
                                 )
                                 .decode()
                                 .unwrap();
+                                let mut jpeg_bytes: Vec<u8> = Vec::new();
                                 rgba_reader
                                     .write_to(
                                         &mut Cursor::new(&mut jpeg_bytes),
@@ -123,7 +125,7 @@ impl Component for App {
                                 log!("processed page", page_num, &stem);
                             }
                             log!(
-                                "processed all pages",
+                                "processed all pages for",
                                 &stem,
                                 now.elapsed().as_secs_f32(),
                                 "s"
@@ -136,7 +138,7 @@ impl Component for App {
                                     .finish()
                                     .expect("failed finishing png zip")
                                     .into_inner(),
-                                jpeg_data: jpeg_zip_writer
+                                jpeg_zip: jpeg_zip_writer
                                     .finish()
                                     .expect("failed finishing jpeg zip")
                                     .into_inner(),
@@ -154,6 +156,7 @@ impl Component for App {
         <>
         <main>
             <h1>{CRATE_NAME}</h1>
+            <p>{CARGO_PKG_DESCRIPTION}</p>
             <div
                 id="file-pick"
                 ondrop={ctx.link().callback(|e: DragEvent| {
@@ -174,7 +177,7 @@ impl Component for App {
                     let _ = element.remove_attribute("class");
                 })}
             >
-                <p>{"Drop your documents here or click to select"}</p>
+                <div style="margin-bottom: .5em">{"Drop your documents here or click to select"}</div>
                 <input
                     type="file"
                     accept="application/pdf"
@@ -205,8 +208,8 @@ impl App {
         let png_zip_blob = Blob::new::<&[u8]>(&file.png_zip);
         let png_zip_url = Url::create_object_url_with_blob(&png_zip_blob.into())
             .expect("failed creating url for png");
-        let jpeg_blob = Blob::new::<&[u8]>(&file.jpeg_data);
-        let jpeg_url = Url::create_object_url_with_blob(&jpeg_blob.into())
+        let jpeg_zip_blob = Blob::new::<&[u8]>(&file.jpeg_zip);
+        let jpeg_zip_url = Url::create_object_url_with_blob(&jpeg_zip_blob.into())
             .expect("failed creating url for png");
         html! {
             <>
@@ -216,7 +219,7 @@ impl App {
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"PNG"}
                 </a>
-                <a class="download" href={jpeg_url} target="_blank" download={file.stem.clone() + ".jpeg"}>
+                <a class="download" href={jpeg_zip_url} target="_blank" download={file.stem.clone() + ".zip"}>
                     <img src="download-1-svgrepo-com.svg" width="10" height="15" />
                     {"JPEG"}
                 </a>

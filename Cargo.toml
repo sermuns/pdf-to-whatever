@@ -1,5 +1,6 @@
 [package]
 name = "pdf-to-whatever"
+description = "Download images of all pages in PDF. Processing is done locally in browser using WASM."
 version = "0.1.0"
 edition = "2024"
 authors = ["Samuel Åkesson <sermuns@lysator.liu.se>"]
