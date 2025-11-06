@@ -10,12 +10,12 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::io::{Cursor, Write};
 use std::sync::Arc;
-use web_sys::{DragEvent, Event, HtmlElement, HtmlInputElement, HtmlScriptElement, Url};
+use web_sys::{DragEvent, Event, HtmlElement, HtmlInputElement, Url};
 use web_time::Instant;
 use yew::html::TargetCast;
 use yew::{Callback, Component, Context, Html, html};
 use zip::ZipWriter;
-use zip::write::{ExtendedFileOptions, FileOptions, SimpleFileOptions};
+use zip::write::SimpleFileOptions;
 
 const CRATE_NAME: &str = env!("CARGO_BIN_NAME");
 const CARGO_PKG_DESCRIPTION: &str = env!("CARGO_PKG_DESCRIPTION");
@@ -79,7 +79,7 @@ impl Component for App {
 
                             let pdf = Pdf::new(Arc::new(data)).expect("failed reading document");
 
-                            let mut now = Instant::now();
+                            let now = Instant::now();
                             let mut png_zip_writer = ZipWriter::new(Cursor::new(Vec::new()));
                             let mut jpeg_zip_writer = ZipWriter::new(Cursor::new(Vec::new()));
                             for (page_num, page) in pdf.pages().iter().enumerate() {
